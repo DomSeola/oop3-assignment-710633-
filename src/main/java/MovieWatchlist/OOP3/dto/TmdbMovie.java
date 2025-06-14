@@ -1,7 +1,6 @@
 package MovieWatchlist.OOP3.dto;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import java.util.List;
 
 public class TmdbMovie {
     private int id;

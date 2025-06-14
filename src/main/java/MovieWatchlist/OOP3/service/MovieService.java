@@ -34,6 +34,7 @@ public class MovieService {
 
     @Transactional
     public Movie addMovieToWatchlist(String title) throws ExecutionException, InterruptedException, IOException {
+        // Fetch data from APIs in parallel
         CompletableFuture<OmdbMovie> omdbFuture = apiService.fetchOmdbMovie(title);
         CompletableFuture<TmdbMovieSearchResult> tmdbSearchFuture = apiService.searchTmdbMovie(title);
         CompletableFuture.allOf(omdbFuture, tmdbSearchFuture).join();
@@ -47,10 +48,12 @@ public class MovieService {
         
         TmdbMovie tmdbMovie = tmdbSearchResult.getResults().get(0);
         
+        // Fetch additional data
         CompletableFuture<TmdbMovieImages> imagesFuture = apiService.getTmdbMovieImages(tmdbMovie.getId());
         CompletableFuture<TmdbSimilarMovies> similarMoviesFuture = apiService.getTmdbSimilarMovies(tmdbMovie.getId());
         CompletableFuture.allOf(imagesFuture, similarMoviesFuture).join();
         
+        // Create and save movie
         Movie movie = new Movie(
             omdbMovie.getTitle(),
             Integer.parseInt(omdbMovie.getYear().replaceAll("\\D", "")),
@@ -58,6 +61,7 @@ public class MovieService {
             omdbMovie.getGenre()
         );
         
+        // Set similar movies
         movie.setSimilarMovies(
             similarMoviesFuture.get().getResults().stream()
                 .map(TmdbSimilarMovies.SimilarMovie::getTitle)
@@ -65,13 +69,15 @@ public class MovieService {
         );
         
         movie = movieRepository.save(movie);
+        
+        // Download and save images
         processImages(movie, imagesFuture.get(), tmdbMovie);
         
         return movie;
     }
 
     private void processImages(Movie movie, TmdbMovieImages images, TmdbMovie tmdbMovie) throws IOException {
-        // Download and save 3 images
+        // Download poster if available
         if (tmdbMovie.getPosterPath() != null) {
             String posterPath = apiService.downloadImage(tmdbMovie.getPosterPath(), "poster", movie.getTitle());
             MovieImage posterImage = new MovieImage(posterPath, "poster");
@@ -79,6 +85,7 @@ public class MovieService {
             movieImageRepository.save(posterImage);
         }
         
+        // Download backdrop if available
         if (tmdbMovie.getBackdropPath() != null) {
             String backdropPath = apiService.downloadImage(tmdbMovie.getBackdropPath(), "backdrop", movie.getTitle());
             MovieImage backdropImage = new MovieImage(backdropPath, "backdrop");
@@ -86,6 +93,7 @@ public class MovieService {
             movieImageRepository.save(backdropImage);
         }
         
+        // Download one more image if available
         if (images.getBackdrops() != null && !images.getBackdrops().isEmpty()) {
             String additionalPath = apiService.downloadImage(
                 images.getBackdrops().get(0).getFilePath(), "additional", movie.getTitle());

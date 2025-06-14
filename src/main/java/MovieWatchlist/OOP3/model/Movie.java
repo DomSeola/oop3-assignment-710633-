@@ -11,7 +11,7 @@ public class Movie {
     
     private String title;
     
-    @Column(name = "release_year") // Changed from 'year' to avoid SQL keyword conflict
+    @Column(name = "release_year")
     private int year;
     
     private String director;
@@ -36,7 +36,7 @@ public class Movie {
         this.rating = 0;
     }
 
-    // Getters and Setters for all fields
+    // Getters and setters 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getTitle() { return title; }

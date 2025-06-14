@@ -32,27 +32,18 @@ public class ApiService {
     @Value("${image.download.path}")
     private String imageDownloadPath;
     
-    @Value("${omdb.api.url}")
-    private String omdbApiUrl;
-    
-    @Value("${tmdb.api.url}")
-    private String tmdbApiUrl;
-    
-    @Value("${tmdb.image.url}")
-    private String tmdbImageUrl;
-    
     private final ObjectMapper objectMapper = new ObjectMapper();
     
     public CompletableFuture<OmdbMovie> fetchOmdbMovie(String title) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                URI uri = new URIBuilder(omdbApiUrl)
+                URI uri = new URIBuilder("http://www.omdbapi.com/")
                     .addParameter("apikey", omdbApiKey)
                     .addParameter("t", title)
                     .build();
                 return executeGetRequest(uri, OmdbMovie.class);
             } catch (Exception e) {
-                throw new RuntimeException("OMDb API error", e);
+                throw new RuntimeException("Failed to fetch from OMDb API", e);
             }
         });
     }
@@ -60,13 +51,13 @@ public class ApiService {
     public CompletableFuture<TmdbMovieSearchResult> searchTmdbMovie(String title) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                URI uri = new URIBuilder(tmdbApiUrl + "search/movie")
+                URI uri = new URIBuilder("https://api.themoviedb.org/3/search/movie")
                     .addParameter("api_key", tmdbApiKey)
                     .addParameter("query", title)
                     .build();
                 return executeGetRequest(uri, TmdbMovieSearchResult.class);
             } catch (Exception e) {
-                throw new RuntimeException("TMDB search error", e);
+                throw new RuntimeException("Failed to search TMDB", e);
             }
         });
     }
@@ -74,7 +65,7 @@ public class ApiService {
     public CompletableFuture<TmdbMovie> getTmdbMovieDetails(int tmdbId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                URI uri = new URIBuilder(tmdbApiUrl + "movie/" + tmdbId)
+                URI uri = new URIBuilder("https://api.themoviedb.org/3/movie/" + tmdbId)
                     .addParameter("api_key", tmdbApiKey)
                     .build();
                 return executeGetRequest(uri, TmdbMovie.class);
@@ -87,7 +78,7 @@ public class ApiService {
     public CompletableFuture<TmdbMovieImages> getTmdbMovieImages(int tmdbId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                URI uri = new URIBuilder(tmdbApiUrl + "movie/" + tmdbId + "/images")
+                URI uri = new URIBuilder("https://api.themoviedb.org/3/movie/" + tmdbId + "/images")
                     .addParameter("api_key", tmdbApiKey)
                     .build();
                 return executeGetRequest(uri, TmdbMovieImages.class);
@@ -100,7 +91,7 @@ public class ApiService {
     public CompletableFuture<TmdbSimilarMovies> getTmdbSimilarMovies(int tmdbId) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                URI uri = new URIBuilder(tmdbApiUrl + "movie/" + tmdbId + "/similar")
+                URI uri = new URIBuilder("https://api.themoviedb.org/3/movie/" + tmdbId + "/similar")
                     .addParameter("api_key", tmdbApiKey)
                     .build();
                 return executeGetRequest(uri, TmdbSimilarMovies.class);
@@ -113,20 +104,19 @@ public class ApiService {
     private <T> T executeGetRequest(URI uri, Class<T> responseType) throws IOException {
         try (CloseableHttpClient client = HttpClients.createDefault()) {
             HttpGet request = new HttpGet(uri);
-            return client.execute(request, httpResponse -> {
-                String responseBody = EntityUtils.toString(httpResponse.getEntity());
-                return objectMapper.readValue(responseBody, responseType);
-            });
+            String response = client.execute(request, httpResponse -> 
+                EntityUtils.toString(httpResponse.getEntity()));
+            return objectMapper.readValue(response, responseType);
         }
     }
     
-    public String downloadImage(String imagePath, String imageType, String movieTitle) throws IOException {
+    public String downloadImage(String imageUrl, String imageType, String movieTitle) throws IOException {
         Files.createDirectories(Paths.get(imageDownloadPath));
         String sanitizedTitle = movieTitle.replaceAll("[^a-zA-Z0-9]", "_");
         String fileName = sanitizedTitle + "_" + imageType + "_" + System.currentTimeMillis() + ".jpg";
         String filePath = imageDownloadPath + File.separator + fileName;
         
-        try (InputStream in = new URL(tmdbImageUrl + imagePath).openStream();
+        try (InputStream in = new URL("https://image.tmdb.org/t/p/original" + imageUrl).openStream();
              FileOutputStream out = new FileOutputStream(filePath)) {
             byte[] buffer = new byte[4096];
             int bytesRead;
