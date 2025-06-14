@@ -9,20 +9,20 @@ public class MovieImage {
     private Long id;
     
     private String filePath;
-    private String imageType; // "poster", "backdrop", etc.
+    private String imageType;
     
     @ManyToOne
     @JoinColumn(name = "movie_id")
     private Movie movie;
-    
-    // Constructors, getters, and setters
+
     public MovieImage() {}
-    
+
     public MovieImage(String filePath, String imageType) {
         this.filePath = filePath;
         this.imageType = imageType;
     }
-    
+
+    // Getters and Setters
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getFilePath() { return filePath; }

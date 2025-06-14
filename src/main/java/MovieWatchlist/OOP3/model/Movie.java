@@ -10,7 +10,10 @@ public class Movie {
     private Long id;
     
     private String title;
+    
+    @Column(name = "release_year") // Changed from 'year' to avoid SQL keyword conflict
     private int year;
+    
     private String director;
     private String genre;
     private boolean watched;
@@ -22,9 +25,8 @@ public class Movie {
     @ElementCollection
     private List<String> similarMovies;
     
-    // Constructors, getters, and setters
     public Movie() {}
-    
+
     public Movie(String title, int year, String director, String genre) {
         this.title = title;
         this.year = year;
@@ -33,8 +35,8 @@ public class Movie {
         this.watched = false;
         this.rating = 0;
     }
-    
-    // Getters and setters for all fields
+
+    // Getters and Setters for all fields
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
     public String getTitle() { return title; }
