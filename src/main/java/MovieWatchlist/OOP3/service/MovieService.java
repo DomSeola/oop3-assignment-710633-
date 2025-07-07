@@ -1,6 +1,7 @@
 package MovieWatchlist.OOP3.service;
 
 import MovieWatchlist.OOP3.dto.*;
+import MovieWatchlist.OOP3.exception.*;
 import MovieWatchlist.OOP3.model.Movie;
 import MovieWatchlist.OOP3.model.MovieImage;
 import MovieWatchlist.OOP3.repository.MovieImageRepository;
@@ -23,37 +24,43 @@ import java.util.stream.Collectors;
 public class MovieService {
     private static final Logger logger = LoggerFactory.getLogger(MovieService.class);
     
+    private final OmdbClient omdbClient;
+    private final TmdbClient tmdbClient;
+    private final MovieRepository movieRepository;
+    private final MovieImageRepository movieImageRepository;
+    private final ApiService apiService;
+
     @Autowired
-    private ApiService apiService;
-    
-    @Autowired
-    private MovieRepository movieRepository;
-    
-    @Autowired
-    private MovieImageRepository movieImageRepository;
+    public MovieService(OmdbClient omdbClient, TmdbClient tmdbClient,
+                      MovieRepository movieRepository, MovieImageRepository movieImageRepository,
+                      ApiService apiService) {
+        this.omdbClient = omdbClient;
+        this.tmdbClient = tmdbClient;
+        this.movieRepository = movieRepository;
+        this.movieImageRepository = movieImageRepository;
+        this.apiService = apiService;
+    }
 
     @Transactional
     public Movie addMovieToWatchlist(String title) throws ExecutionException, InterruptedException, IOException {
-        // Fetch data from APIs in parallel
-        CompletableFuture<OmdbMovie> omdbFuture = apiService.fetchOmdbMovie(title);
-        CompletableFuture<TmdbMovieSearchResult> tmdbSearchFuture = apiService.searchTmdbMovie(title);
+        CompletableFuture<OmdbMovie> omdbFuture = CompletableFuture.supplyAsync(() -> omdbClient.fetchMovie(title));
+        CompletableFuture<TmdbMovieSearchResult> tmdbSearchFuture = CompletableFuture.supplyAsync(() -> tmdbClient.searchMovie(title));
+        
         CompletableFuture.allOf(omdbFuture, tmdbSearchFuture).join();
         
         OmdbMovie omdbMovie = omdbFuture.get();
         TmdbMovieSearchResult tmdbSearchResult = tmdbSearchFuture.get();
         
         if (omdbMovie.getTitle() == null || tmdbSearchResult.getResults().isEmpty()) {
-            throw new RuntimeException("Movie not found in one or both APIs");
+            throw new MovieNotFoundException("Movie not found in one or both APIs");
         }
         
         TmdbMovie tmdbMovie = tmdbSearchResult.getResults().get(0);
         
-        // Fetch additional data
-        CompletableFuture<TmdbMovieImages> imagesFuture = apiService.getTmdbMovieImages(tmdbMovie.getId());
-        CompletableFuture<TmdbSimilarMovies> similarMoviesFuture = apiService.getTmdbSimilarMovies(tmdbMovie.getId());
+        CompletableFuture<TmdbMovieImages> imagesFuture = CompletableFuture.supplyAsync(() -> tmdbClient.getMovieImages(tmdbMovie.getId()));
+        CompletableFuture<TmdbSimilarMovies> similarMoviesFuture = CompletableFuture.supplyAsync(() -> tmdbClient.getSimilarMovies(tmdbMovie.getId()));
         CompletableFuture.allOf(imagesFuture, similarMoviesFuture).join();
         
-        // Create and save movie
         Movie movie = new Movie(
             omdbMovie.getTitle(),
             Integer.parseInt(omdbMovie.getYear().replaceAll("\\D", "")),
@@ -61,7 +68,6 @@ public class MovieService {
             omdbMovie.getGenre()
         );
         
-        // Set similar movies
         movie.setSimilarMovies(
             similarMoviesFuture.get().getResults().stream()
                 .map(TmdbSimilarMovies.SimilarMovie::getTitle)
@@ -69,15 +75,12 @@ public class MovieService {
         );
         
         movie = movieRepository.save(movie);
-        
-        // Download and save images
         processImages(movie, imagesFuture.get(), tmdbMovie);
         
         return movie;
     }
 
     private void processImages(Movie movie, TmdbMovieImages images, TmdbMovie tmdbMovie) throws IOException {
-        // Download poster if available
         if (tmdbMovie.getPosterPath() != null) {
             String posterPath = apiService.downloadImage(tmdbMovie.getPosterPath(), "poster", movie.getTitle());
             MovieImage posterImage = new MovieImage(posterPath, "poster");
@@ -85,7 +88,6 @@ public class MovieService {
             movieImageRepository.save(posterImage);
         }
         
-        // Download backdrop if available
         if (tmdbMovie.getBackdropPath() != null) {
             String backdropPath = apiService.downloadImage(tmdbMovie.getBackdropPath(), "backdrop", movie.getTitle());
             MovieImage backdropImage = new MovieImage(backdropPath, "backdrop");
@@ -93,7 +95,6 @@ public class MovieService {
             movieImageRepository.save(backdropImage);
         }
         
-        // Download one more image if available
         if (images.getBackdrops() != null && !images.getBackdrops().isEmpty()) {
             String additionalPath = apiService.downloadImage(
                 images.getBackdrops().get(0).getFilePath(), "additional", movie.getTitle());
@@ -111,7 +112,7 @@ public class MovieService {
     @Transactional
     public Movie updateWatchedStatus(Long movieId, boolean watched) {
         Movie movie = movieRepository.findById(movieId)
-            .orElseThrow(() -> new RuntimeException("Movie not found"));
+            .orElseThrow(() -> new MovieNotFoundException(movieId));
         movie.setWatched(watched);
         return movieRepository.save(movie);
     }
@@ -119,16 +120,19 @@ public class MovieService {
     @Transactional
     public Movie updateRating(Long movieId, int rating) {
         if (rating < 1 || rating > 5) {
-            throw new IllegalArgumentException("Rating must be between 1 and 5");
+            throw new InvalidRatingException();
         }
         Movie movie = movieRepository.findById(movieId)
-            .orElseThrow(() -> new RuntimeException("Movie not found"));
+            .orElseThrow(() -> new MovieNotFoundException(movieId));
         movie.setRating(rating);
         return movieRepository.save(movie);
     }
 
     @Transactional
     public void deleteMovie(Long movieId) {
+        if (!movieRepository.existsById(movieId)) {
+            throw new MovieNotFoundException(movieId);
+        }
         movieRepository.deleteById(movieId);
     }
 }
